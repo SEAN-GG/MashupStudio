@@ -117,8 +117,8 @@ struct PitchTempoSheet: View {
                         .monospacedDigit()
                         .frame(width: 48)
                 }
-                Toggle("התחלה מנקודת הנגינה", isOn: $bpmStartAtPlayhead)
             }
+            Toggle("החל מנקודת הנגינה (אחרת מתחילת הקליפ)", isOn: $bpmStartAtPlayhead)
             Button {
                 applyTempo()
             } label: {
@@ -163,8 +163,8 @@ struct PitchTempoSheet: View {
                         .monospacedDigit()
                         .frame(width: 48)
                 }
-                Toggle("התחלה מנקודת הנגינה", isOn: $pitchStartAtPlayhead)
             }
+            Toggle("החל מנקודת הנגינה (אחרת מתחילת הקליפ)", isOn: $pitchStartAtPlayhead)
             Button {
                 applyPitch()
             } label: {
@@ -270,11 +270,11 @@ struct PitchTempoSheet: View {
     private func applyTempo() {
         guard var current = clip, let bpm = asset?.bpm, bpm > 20 else { return }
         let rate = min(max(targetBPM / bpm, Clip.minRate), Clip.maxRate)
+        let t0 = startTime(atPlayhead: bpmStartAtPlayhead)
         if bpmGradual {
-            let t0 = startTime(atPlayhead: bpmStartAtPlayhead)
             current.rateCurve.setRamp(at: t0, duration: bpmRampSeconds, to: rate)
         } else {
-            current.rateCurve.setInstantChange(at: 0, to: rate)
+            current.rateCurve.setInstantChange(at: t0, to: rate)
         }
         model.updateClip(current)
     }
@@ -282,11 +282,11 @@ struct PitchTempoSheet: View {
     private func applyPitch() {
         guard var current = clip else { return }
         let cents = Double(semitones * 100)
+        let t0 = startTime(atPlayhead: pitchStartAtPlayhead)
         if pitchGradual {
-            let t0 = startTime(atPlayhead: pitchStartAtPlayhead)
             current.pitchCurve.setRamp(at: t0, duration: pitchRampSeconds, to: cents)
         } else {
-            current.pitchCurve.setInstantChange(at: 0, to: cents)
+            current.pitchCurve.setInstantChange(at: t0, to: cents)
         }
         model.updateClip(current)
     }
