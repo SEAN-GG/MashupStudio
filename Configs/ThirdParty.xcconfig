@@ -1,0 +1,3 @@
+// Optional third-party integrations. scripts/build_lame.sh appends the LAME
+// flags here when MP3 export is enabled in CI. Empty by default — the app
+// builds and runs fully without it (M4A/WAV export).

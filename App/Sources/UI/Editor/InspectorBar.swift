@@ -1,0 +1,130 @@
+import SwiftUI
+
+/// Bottom quick-edit bar for the selected clip: gain, fades, and entry points
+/// to the stem mixer and pitch/tempo editors.
+struct InspectorBar: View {
+    @Bindable var model: EditorModel
+    let onStems: () -> Void
+    let onPitchTempo: () -> Void
+
+    var body: some View {
+        if let clip = model.selectedClip {
+            VStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    Text(clip.name)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    Spacer()
+                    infoBadges(clip: clip)
+                    Button {
+                        model.deleteClip(clip.id)
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.footnote)
+                            .foregroundStyle(.red.opacity(0.9))
+                    }
+                }
+
+                HStack(spacing: 14) {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                    Slider(value: gainBinding(clip: clip), in: 0...2)
+                        .frame(maxWidth: .infinity)
+                    Text(String(format: "%.0f%%", clip.gain * 100))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 44, alignment: .trailing)
+                }
+
+                HStack(spacing: 10) {
+                    fadeControl(label: "פייד־אין", value: clip.fades.fadeIn) { newValue in
+                        updateFades(clip: clip) { $0.fadeIn = newValue }
+                    }
+                    fadeControl(label: "פייד־אאוט", value: clip.fades.fadeOut) { newValue in
+                        updateFades(clip: clip) { $0.fadeOut = newValue }
+                    }
+                    Spacer()
+                    Button(action: onStems) {
+                        Label("כלים", systemImage: "slider.vertical.3")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(Theme.surfaceRaised, in: Capsule())
+                    }
+                    Button(action: onPitchTempo) {
+                        Label("קצב וסולם", systemImage: "dial.medium")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(Theme.surfaceRaised, in: Capsule())
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Theme.surface)
+        }
+    }
+
+    @ViewBuilder
+    private func infoBadges(clip: Clip) -> some View {
+        let asset = AssetLibrary.shared.asset(clip.assetID)
+        HStack(spacing: 6) {
+            if let bpm = asset?.bpm {
+                Text("BPM \(String(format: "%.1f", clip.effectiveBPM(assetBPM: bpm, at: 0)))")
+            }
+            if let key = asset?.key {
+                Text(clip.effectiveKey(assetKey: key, at: 0).bothNames())
+            }
+            if asset?.analysisDone != true {
+                HStack(spacing: 4) {
+                    ProgressView().controlSize(.mini)
+                    Text("מנתח…")
+                }
+            }
+        }
+        .font(.caption2.monospacedDigit())
+        .foregroundStyle(Theme.textSecondary)
+    }
+
+    private func gainBinding(clip: Clip) -> Binding<Double> {
+        Binding {
+            model.selectedClip?.gain ?? clip.gain
+        } set: { newValue in
+            guard var current = model.selectedClip else { return }
+            current.gain = newValue
+            model.previewClip(current)
+        }
+    }
+
+    private func updateFades(clip: Clip, _ change: (inout ClipFades) -> Void) {
+        guard var current = model.selectedClip else { return }
+        change(&current.fades)
+        current.fades.fadeIn = min(max(current.fades.fadeIn, 0), current.outputDuration)
+        current.fades.fadeOut = min(max(current.fades.fadeOut, 0), current.outputDuration)
+        model.updateClip(current)
+    }
+
+    private func fadeControl(label: String, value: Double, onChange: @escaping (Double) -> Void) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(Theme.textSecondary)
+            Menu {
+                ForEach([0.0, 1, 2, 4, 8, 12, 16], id: \.self) { seconds in
+                    Button(seconds == 0 ? "בלי" : "\(Int(seconds)) שנ׳") {
+                        onChange(seconds)
+                    }
+                }
+            } label: {
+                Text(value < 0.01 ? "—" : String(format: "%.0f שנ׳", value))
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 7))
+            }
+        }
+    }
+}

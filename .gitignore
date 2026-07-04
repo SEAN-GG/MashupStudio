@@ -1,0 +1,10 @@
+.DS_Store
+xcuserdata/
+*.xcodeproj
+!project.yml
+build/
+DerivedData/
+ThirdParty/downloads/
+*.p8
+*.ipa
+*.xcarchive
