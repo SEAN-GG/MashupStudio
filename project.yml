@@ -19,6 +19,7 @@ targets:
     platform: iOS
     sources:
       - App/Sources
+      - App/Resources
     info:
       path: App/Info.plist
       properties:
@@ -39,6 +40,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.seanyehezkel.mashupstudio
         INFOPLIST_KEY_CFBundleDisplayName: "סטודיו מיקס"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   MashupStudioTests:
     type: bundle.unit-test
     platform: iOS
