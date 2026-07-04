@@ -41,6 +41,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.seanyehezkel.mashupstudio
         INFOPLIST_KEY_CFBundleDisplayName: "סטודיו מיקס"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_OBJC_BRIDGING_HEADER: App/Sources/Support/Bridging.h
   MashupStudioTests:
     type: bundle.unit-test
     platform: iOS

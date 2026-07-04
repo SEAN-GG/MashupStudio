@@ -41,27 +41,29 @@ struct TransportBar: View {
             }
             .padding(.horizontal, 14)
 
-            HStack(spacing: 18) {
+            HStack(spacing: 10) {
                 Button {
                     model.undo()
                 } label: {
                     Image(systemName: "arrow.uturn.backward")
+                        .font(.body)
                 }
                 .disabled(!model.canUndo)
                 Button {
                     model.redo()
                 } label: {
                     Image(systemName: "arrow.uturn.forward")
+                        .font(.body)
                 }
                 .disabled(!model.canRedo)
 
-                Spacer()
+                Spacer(minLength: 4)
 
                 Button {
                     model.engine.stopToStart()
                 } label: {
                     Image(systemName: "backward.end.fill")
-                        .font(.title3)
+                        .font(.body)
                 }
                 Button {
                     if model.engine.isPlaying {
@@ -71,22 +73,25 @@ struct TransportBar: View {
                     }
                 } label: {
                     Image(systemName: model.engine.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 42))
+                        .font(.system(size: 38))
                         .foregroundStyle(Theme.accent)
                 }
                 Button {
                     model.splitSelectedClipAtPlayhead()
                 } label: {
                     Image(systemName: "scissors")
-                        .font(.title3)
+                        .font(.body)
                 }
                 .disabled(model.selectedClip.map { !$0.contains(timelineTime: model.engine.playhead) } ?? true)
 
-                Spacer()
+                Spacer(minLength: 4)
 
                 Text(TimeFormat.position(model.engine.playhead))
-                    .font(.system(.title3, design: .monospaced).weight(.medium))
+                    .font(.system(.callout, design: .monospaced).weight(.medium))
                     .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
                 Button {
                     AppSettings.shared.setSnapEnabled(!AppSettings.shared.snapEnabled)
                 } label: {
@@ -97,7 +102,7 @@ struct TransportBar: View {
                                     in: RoundedRectangle(cornerRadius: 6))
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 12)
         }
         .padding(.top, 6)
         .padding(.bottom, 8)

@@ -100,6 +100,12 @@ struct EditorView: View {
         } message: {
             Text(model.importError ?? "")
         }
+        .alert("שגיאת נגינה", isPresented: Binding(get: { model.engine.lastError != nil },
+                                                    set: { if !$0 { model.engine.lastError = nil } })) {
+            Button("אישור") { model.engine.lastError = nil }
+        } message: {
+            Text(model.engine.lastError ?? "")
+        }
         .onDisappear {
             model.stopPlayback()
         }
