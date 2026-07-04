@@ -15,8 +15,10 @@ struct AutomationPoint: Codable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey { case id, time, value, shapeIn }
 }
 
-/// Piecewise automation curve. Value before the first point is the first point's
-/// value; after the last point it holds the last value. With no points, `defaultValue`.
+/// Piecewise automation curve. Before the first point the value is
+/// `defaultValue` (a .step first point jumps at its time; a .linear first point
+/// holds its own value since there is nothing to ramp from). After the last
+/// point the value holds. With no points, `defaultValue` everywhere.
 struct AutomationCurve: Codable, Hashable {
     var points: [AutomationPoint] = []
     var defaultValue: Double
@@ -33,9 +35,15 @@ struct AutomationCurve: Codable, Hashable {
         points.sort { $0.time < $1.time }
     }
 
+    /// Value held before the first point.
+    private var leadInValue: Double {
+        guard let first = points.first else { return defaultValue }
+        return first.shapeIn == .step ? defaultValue : first.value
+    }
+
     func value(at t: Double) -> Double {
         guard !points.isEmpty else { return defaultValue }
-        if t <= points[0].time { return points[0].value }
+        if t < points[0].time { return leadInValue }
         var previous = points[0]
         for point in points.dropFirst() {
             if t < point.time {
@@ -61,7 +69,7 @@ struct AutomationCurve: Codable, Hashable {
         guard !points.isEmpty else { return defaultValue * t }
         var total = 0.0
         var cursor = 0.0
-        var currentValue = points[0].value
+        var currentValue = leadInValue
 
         for point in points {
             let segmentEnd = min(point.time, t)
@@ -100,7 +108,7 @@ struct AutomationCurve: Codable, Hashable {
 
         var accumulated = 0.0
         var cursor = 0.0
-        var currentValue = max(points[0].value, 0.001)
+        var currentValue = max(leadInValue, 0.001)
 
         func solveConstant(_ v: Double, remaining: Double) -> Double {
             remaining / max(v, 0.001)
@@ -184,20 +192,31 @@ struct AutomationCurve: Codable, Hashable {
         }
         right.points = rightPoints
         right.normalize()
+        let hadLaterPoints = points.contains { $0.time > t }
         points.removeAll { $0.time > t }
+        if hadLaterPoints {
+            // Preserve any in-progress ramp value at the cut for the left part.
+            points.append(AutomationPoint(time: t, value: valueAtSplit, shapeIn: .linear))
+            normalize()
+        }
         return right
     }
 
     /// Shifts all points in time (for trims from the left).
     mutating func shift(by delta: Double) {
-        let anchor = value(at: -delta > 0 ? -delta : 0)
+        let anchor = value(at: max(-delta, 0))
         var shifted: [AutomationPoint] = []
         for p in points {
             let t = p.time + delta
             if t >= 0 { var m = p; m.time = t; shifted.append(m) }
         }
-        if delta < 0, shifted.first.map({ $0.time > 0.001 }) ?? !shifted.isEmpty {
-            shifted.insert(AutomationPoint(time: 0, value: anchor, shapeIn: .step), at: 0)
+        if delta < 0 {
+            // If the value at the new start differs from the default (e.g. we
+            // trimmed into or past a change), anchor it explicitly at t=0.
+            let needsAnchor = shifted.first.map { $0.time > 0.0005 } ?? true
+            if needsAnchor && abs(anchor - defaultValue) > 1e-9 {
+                shifted.insert(AutomationPoint(time: 0, value: anchor, shapeIn: .step), at: 0)
+            }
         }
         points = shifted
         normalize()
