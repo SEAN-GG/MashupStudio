@@ -81,8 +81,8 @@ final class StemJobManager {
 
     // MARK: - Job body (off main thread)
 
-    private static func runSeparation(url: URL,
-                                      progress: @escaping (Double) -> Void) throws -> [StemKind: (left: [Float], right: [Float])] {
+    private nonisolated static func runSeparation(url: URL,
+                                                  progress: @escaping (Double) -> Void) throws -> [StemKind: (left: [Float], right: [Float])] {
         #if DEMUCS_ENABLED
         let (left, right) = try loadStereo(url: url, sampleRate: 44100)
         let separator = DemucsSeparator()
@@ -92,7 +92,7 @@ final class StemJobManager {
         #endif
     }
 
-    static func loadStereo(url: URL, sampleRate: Double) throws -> ([Float], [Float]) {
+    nonisolated static func loadStereo(url: URL, sampleRate: Double) throws -> ([Float], [Float]) {
         let file = try AVAudioFile(forReading: url)
         guard let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                                sampleRate: sampleRate,
@@ -134,8 +134,8 @@ final class StemJobManager {
     }
 
     /// Writes stems as AAC files next to the asset.
-    private static func writeStems(_ stems: [StemKind: (left: [Float], right: [Float])],
-                                   assetID: UUID) throws {
+    private nonisolated static func writeStems(_ stems: [StemKind: (left: [Float], right: [Float])],
+                                               assetID: UUID) throws {
         guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                          sampleRate: 44100, channels: 2, interleaved: false) else {
             throw StemSeparationError.processingFailed
