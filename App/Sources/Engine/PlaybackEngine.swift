@@ -160,6 +160,14 @@ final class PlaybackEngine {
         }
     }
 
+    /// Explicit connection format everywhere: connecting with `format: nil`
+    /// from a node whose output format is still undefined (a fresh mixer with
+    /// no inputs) raises an NSException on device and crashes the app.
+    private var busFormat: AVAudioFormat {
+        AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)
+            ?? engine.outputNode.outputFormat(forBus: 0)
+    }
+
     private func rebuildLaneMixers(count: Int) {
         guard laneMixers.count != count else { return }
         // Lane mixers only change while stopped (edits trigger a rebuild anyway).
@@ -167,7 +175,7 @@ final class PlaybackEngine {
         laneMixers = (0..<count).map { _ in AVAudioMixerNode() }
         for mixer in laneMixers {
             engine.attach(mixer)
-            engine.connect(mixer, to: engine.mainMixerNode, format: nil)
+            engine.connect(mixer, to: engine.mainMixerNode, format: busFormat)
         }
     }
 
@@ -204,6 +212,12 @@ final class PlaybackEngine {
         }
         guard !files.isEmpty else { return }
 
+        // One explicit format for the whole chain (players feed the stem mixer
+        // in their own file format; the mixer converts).
+        let chainRate = files[0].0.processingFormat.sampleRate
+        guard let chainFormat = AVAudioFormat(standardFormatWithSampleRate: chainRate > 0 ? chainRate : 44100,
+                                              channels: 2) else { return }
+
         engine.attach(chain.stemMixer)
         engine.attach(chain.timePitch)
         engine.attach(chain.clipMixer)
@@ -214,13 +228,13 @@ final class PlaybackEngine {
             StemEQMapper.apply(gains: clip.stemGains, to: eq)
             chain.eq = eq
             engine.attach(eq)
-            engine.connect(chain.stemMixer, to: eq, format: nil)
-            engine.connect(eq, to: chain.timePitch, format: nil)
+            engine.connect(chain.stemMixer, to: eq, format: chainFormat)
+            engine.connect(eq, to: chain.timePitch, format: chainFormat)
         } else {
-            engine.connect(chain.stemMixer, to: chain.timePitch, format: nil)
+            engine.connect(chain.stemMixer, to: chain.timePitch, format: chainFormat)
         }
-        engine.connect(chain.timePitch, to: chain.clipMixer, format: nil)
-        engine.connect(chain.clipMixer, to: laneMixers[clip.laneIndex], format: nil)
+        engine.connect(chain.timePitch, to: chain.clipMixer, format: chainFormat)
+        engine.connect(chain.clipMixer, to: laneMixers[clip.laneIndex], format: chainFormat)
 
         for (file, stem) in files {
             let player = AVAudioPlayerNode()

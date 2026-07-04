@@ -171,14 +171,14 @@ final class OfflineRenderer {
             StemEQMapper.configure(eq: unit)
             StemEQMapper.apply(gains: clip.stemGains, to: unit)
             engine.attach(unit)
-            engine.connect(stemMixer, to: unit, format: nil)
-            engine.connect(unit, to: timePitch, format: nil)
+            engine.connect(stemMixer, to: unit, format: renderFormat)
+            engine.connect(unit, to: timePitch, format: renderFormat)
             eq = unit
         } else {
-            engine.connect(stemMixer, to: timePitch, format: nil)
+            engine.connect(stemMixer, to: timePitch, format: renderFormat)
         }
         _ = eq
-        engine.connect(timePitch, to: engine.mainMixerNode, format: nil)
+        engine.connect(timePitch, to: engine.mainMixerNode, format: renderFormat)
 
         var sources: [(URL, StemKind?)] = []
         if useRealStems, let stemURLs = source.stemURLs {

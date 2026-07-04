@@ -145,6 +145,9 @@ private struct RulerView: View {
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
+                    // Scrubbing while playing would rebuild the audio graph on
+                    // every frame — pause first, then move the playhead freely.
+                    if model.engine.isPlaying { model.engine.pause() }
                     let time = (model.contentOffsetX + value.location.x - TimelineView.headerWidth) / model.pixelsPerSecond
                     model.engine.seek(to: max(0, time))
                 }
