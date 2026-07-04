@@ -44,7 +44,7 @@ jobs:
           mkdir -p "$HOME/private_keys"
           printf '%s' "${{ secrets.ASC_KEY_P8 }}" > "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
 
-      - name: Archive
+      - name: Archive (unsigned — signing happens at export)
         run: |
           set -o pipefail
           xcodebuild archive \
@@ -53,13 +53,10 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath build/MashupStudio.xcarchive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_STYLE=Automatic \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
       - name: Create ExportOptions.plist
