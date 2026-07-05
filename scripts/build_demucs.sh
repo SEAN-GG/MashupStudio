@@ -18,12 +18,14 @@ rm -rf "$TP/demucscpp"
 mkdir -p "$TP/demucscpp"
 cp -R "$DL/demucs.cpp/src" "$TP/demucscpp/src"
 
-# Eigen (header-only)
+# Eigen (header-only) — the exact commit demucs.cpp pins as its submodule
+# (3.4.0 release's Tensor module doesn't compile with current clang).
+EIGEN_SHA="dd8c71e62852b2fe429edb6682ac91fd1c578a26"
 if [ ! -d "$TP/eigen" ]; then
   curl -L --retry 3 --fail -o "$DL/eigen.tar.gz" \
-    "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz"
+    "https://gitlab.com/libeigen/eigen/-/archive/$EIGEN_SHA/eigen-$EIGEN_SHA.tar.gz"
   tar xzf "$DL/eigen.tar.gz" -C "$DL"
-  mv "$DL/eigen-3.4.0" "$TP/eigen"
+  mv "$DL/eigen-$EIGEN_SHA" "$TP/eigen"
 fi
 
 # Minimal OpenMP stub: demucs.cpp uses omp pragmas (ignored without -fopenmp)
