@@ -23,6 +23,14 @@ struct Clip: Codable, Identifiable, Hashable {
     var pitchCurve = AutomationCurve(defaultValue: 0.0)    // cents
     var varispeed: Bool = false      // speed change also shifts pitch (classic vinyl-style)
 
+    // Newer fields are optional so projects saved by older builds still decode.
+    /// Gradual overall-volume automation (multiplies gain × fades).
+    var volumeCurve: AutomationCurve? = nil
+    /// Gradual per-stem volume automation (multiplies the stem fader).
+    var stemCurves: [StemKind: AutomationCurve]? = nil
+    /// Effects added per stem (before separation they apply to the whole clip).
+    var stemEffects: [StemKind: [StemEffectSetting]]? = nil
+
     static let minRate = 0.25
     static let maxRate = 4.0
 
@@ -105,6 +113,22 @@ struct Clip: Codable, Identifiable, Hashable {
         right.rateCurve = rightRate
         right.pitchCurve = rightPitch
         right.fades.fadeIn = 0
+
+        if var leftVolume = volumeCurve {
+            right.volumeCurve = leftVolume.split(at: localT)
+            left.volumeCurve = leftVolume
+        }
+        if let curves = stemCurves {
+            var leftMap: [StemKind: AutomationCurve] = [:]
+            var rightMap: [StemKind: AutomationCurve] = [:]
+            for (kind, curve) in curves {
+                var l = curve
+                rightMap[kind] = l.split(at: localT)
+                leftMap[kind] = l
+            }
+            left.stemCurves = leftMap
+            right.stemCurves = rightMap
+        }
         return (left, right)
     }
 
@@ -120,6 +144,16 @@ struct Clip: Codable, Identifiable, Hashable {
         startTime += clamped
         rateCurve.shift(by: -clamped)
         pitchCurve.shift(by: -clamped)
+        volumeCurve?.shift(by: -clamped)
+        if let curves = stemCurves {
+            var shifted: [StemKind: AutomationCurve] = [:]
+            for (kind, curve) in curves {
+                var c = curve
+                c.shift(by: -clamped)
+                shifted[kind] = c
+            }
+            stemCurves = shifted
+        }
         fades.fadeIn = min(fades.fadeIn, max(0, outputDuration - 0.1))
     }
 
@@ -139,9 +173,60 @@ struct Clip: Codable, Identifiable, Hashable {
         return probe.outputDuration
     }
 
-    /// Combined gain (clip gain × fades) at output-local time t.
+    /// Combined gain (clip gain × fades × volume automation) at output-local time t.
     func combinedGain(at t: Double) -> Double {
-        gain * fades.gain(at: t, duration: outputDuration)
+        var g = gain * fades.gain(at: t, duration: outputDuration)
+        if let curve = volumeCurve {
+            g *= min(max(curve.value(at: t), 0), 2)
+        }
+        return g
+    }
+
+    /// Effective per-stem gain (fader × per-stem automation) at output time t.
+    func stemGain(_ kind: StemKind, at t: Double) -> Double {
+        var g = stemGains[kind]
+        if let curve = stemCurves?[kind] {
+            g *= min(max(curve.value(at: t), 0), 2)
+        }
+        return min(max(g, 0), 2)
+    }
+
+    /// True when any stem control differs from passthrough.
+    var hasStemWork: Bool {
+        !stemGains.isNeutral
+            || stemCurves?.values.contains { !$0.isTrivial } == true
+            || stemEffects?.values.contains { !$0.isEmpty } == true
+    }
+
+    /// Effects for one stem (empty when none).
+    func effects(for kind: StemKind) -> [StemEffectSetting] {
+        stemEffects?[kind] ?? []
+    }
+
+    /// All effects across stems (used before separation, applied to the whole clip).
+    var allEffects: [StemEffectSetting] {
+        guard let stemEffects else { return [] }
+        return StemKind.allCases.flatMap { stemEffects[$0] ?? [] }
+    }
+
+    mutating func setEffects(_ effects: [StemEffectSetting], for kind: StemKind) {
+        var map = stemEffects ?? [:]
+        map[kind] = effects.isEmpty ? nil : effects
+        stemEffects = map.isEmpty ? nil : map
+    }
+
+    mutating func modifyStemCurve(_ kind: StemKind, _ change: (inout AutomationCurve) -> Void) {
+        var map = stemCurves ?? [:]
+        var curve = map[kind] ?? AutomationCurve(defaultValue: 1.0)
+        change(&curve)
+        map[kind] = curve
+        stemCurves = map
+    }
+
+    mutating func modifyVolumeCurve(_ change: (inout AutomationCurve) -> Void) {
+        var curve = volumeCurve ?? AutomationCurve(defaultValue: 1.0)
+        change(&curve)
+        volumeCurve = curve
     }
 
     /// Effective BPM at output time t, given the asset's detected BPM.

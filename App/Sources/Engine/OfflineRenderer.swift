@@ -94,11 +94,12 @@ final class OfflineRenderer {
 
         var anySolo = false
         for lane in project.lanes where lane.isSoloed { anySolo = true }
+        let master = project.effectiveMasterVolume
         func laneGain(_ index: Int) -> Double {
-            guard index < project.lanes.count else { return 1 }
+            guard index < project.lanes.count else { return master }
             let lane = project.lanes[index]
             let audible: Bool = anySolo ? lane.isSoloed : !lane.isMuted
-            return audible ? min(max(lane.volume, 0), 2) : 0
+            return (audible ? min(max(lane.volume, 0), 2) : 0) * master
         }
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -165,11 +166,10 @@ final class OfflineRenderer {
         engine.attach(timePitch)
 
         var eq: AVAudioUnitEQ?
-        let useRealStems = source.stemURLs != nil && !clip.stemGains.isNeutral
-        if !useRealStems && !clip.stemGains.isNeutral {
+        let useRealStems = source.stemURLs != nil && clip.hasStemWork
+        if !useRealStems && clip.hasStemWork {
             let unit = AVAudioUnitEQ(numberOfBands: StemEQMapper.bandCount)
             StemEQMapper.configure(eq: unit)
-            StemEQMapper.apply(gains: clip.stemGains, to: unit)
             engine.attach(unit)
             engine.connect(stemMixer, to: unit, format: renderFormat)
             engine.connect(unit, to: timePitch, format: renderFormat)
@@ -177,7 +177,6 @@ final class OfflineRenderer {
         } else {
             engine.connect(stemMixer, to: timePitch, format: renderFormat)
         }
-        _ = eq
         engine.connect(timePitch, to: engine.mainMixerNode, format: renderFormat)
 
         var sources: [(URL, StemKind?)] = []
@@ -190,16 +189,24 @@ final class OfflineRenderer {
         }
 
         var players: [AVAudioPlayerNode] = []
+        var stemMixers: [(mixer: AVAudioMixerNode, stem: StemKind?)] = []
         for (url, stem) in sources {
             guard let file = try? AVAudioFile(forReading: url) else {
                 if stem != nil { continue } else { return nil }
             }
             let player = AVAudioPlayerNode()
+            let subMixer = AVAudioMixerNode()
             engine.attach(player)
-            engine.connect(player, to: stemMixer, format: file.processingFormat)
-            if let stem {
-                player.volume = Float(min(max(clip.stemGains[stem], 0), 2))
-            }
+            engine.attach(subMixer)
+            engine.connect(player, to: subMixer, format: file.processingFormat)
+            let effectSettings = stem.map { clip.effects(for: $0) } ?? clip.allEffects
+            _ = EffectNodes.install(engine: engine,
+                                    settings: effectSettings,
+                                    from: subMixer,
+                                    to: stemMixer,
+                                    format: renderFormat)
+            stemMixers.append((subMixer, stem))
+
             let sr = file.processingFormat.sampleRate
             let startFrame = AVAudioFramePosition(clip.sourceStart * sr)
             let frames = AVAudioFrameCount(max(0, min(clip.sourceDuration * sr,
@@ -237,6 +244,12 @@ final class OfflineRenderer {
             let t = Double(rendered) / sampleRate
             timePitch.rate = Float(clip.rate(at: t))
             timePitch.pitch = Float(clip.pitchCents(at: t))
+            for (subMixer, stem) in stemMixers {
+                subMixer.outputVolume = stem.map { Float(clip.stemGain($0, at: t)) } ?? 1
+            }
+            if let eq {
+                StemEQMapper.apply(gains: { kind in clip.stemGain(kind, at: t) }, to: eq)
+            }
 
             let toRender = AVAudioFrameCount(min(Int64(blockFrames), totalFrames - rendered))
             block.frameLength = 0

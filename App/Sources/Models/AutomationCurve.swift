@@ -170,6 +170,31 @@ struct AutomationCurve: Codable, Hashable {
         normalize()
     }
 
+    /// Fade-in from 0 to the value the curve reaches at `duration`, preserving
+    /// later points (used for per-stem fades).
+    mutating func setFadeIn(duration: Double) {
+        let target = value(at: max(duration, 0.05) + 0.001)
+        points.removeAll { $0.time < duration - 0.0005 }
+        if duration > 0.01 {
+            points.append(AutomationPoint(time: 0, value: 0, shapeIn: .step))
+            points.append(AutomationPoint(time: duration, value: target, shapeIn: .linear))
+        }
+        normalize()
+    }
+
+    /// Fade-out to 0 over the last `duration` seconds of `totalDuration`,
+    /// preserving earlier points.
+    mutating func setFadeOut(duration: Double, totalDuration: Double) {
+        let start = max(totalDuration - duration, 0)
+        let from = value(at: max(start - 0.001, 0))
+        points.removeAll { $0.time > start + 0.0005 }
+        if duration > 0.01 {
+            points.append(AutomationPoint(time: start, value: from, shapeIn: .step))
+            points.append(AutomationPoint(time: totalDuration, value: 0, shapeIn: .linear))
+        }
+        normalize()
+    }
+
     mutating func removePoint(id: UUID) {
         points.removeAll { $0.id == id }
     }

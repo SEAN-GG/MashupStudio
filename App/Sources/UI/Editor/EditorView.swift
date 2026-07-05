@@ -12,6 +12,7 @@ struct EditorView: View {
     @State private var showPitchTempo = false
     @State private var showTransition = false
     @State private var showSettings = false
+    @State private var showVolume = false
 
     init(project: MixProject, onClose: @escaping () -> Void) {
         _model = State(initialValue: EditorModel(project: project))
@@ -32,7 +33,8 @@ struct EditorView: View {
                 if model.selectedClip != nil {
                     InspectorBar(model: model,
                                  onStems: { showStemMixer = true },
-                                 onPitchTempo: { showPitchTempo = true })
+                                 onPitchTempo: { showPitchTempo = true },
+                                 onVolume: { showVolume = true })
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -83,6 +85,13 @@ struct EditorView: View {
                 PitchTempoSheet(model: model, clipID: clip.id)
                     .environment(\.layoutDirection, .rightToLeft)
                     .presentationDetents([.large])
+            }
+        }
+        .sheet(isPresented: $showVolume) {
+            if let clip = model.selectedClip {
+                VolumeSheet(model: model, clipID: clip.id)
+                    .environment(\.layoutDirection, .rightToLeft)
+                    .presentationDetents([.medium, .large])
             }
         }
         .sheet(isPresented: $showTransition) {

@@ -19,8 +19,10 @@ struct ClipView: View {
 
     @State private var dragStartClip: Clip?
     @State private var trimStartClip: Clip?
+    @State private var dragOffsetY: CGFloat = 0
 
     private var isSelected: Bool { model.selectedClipID == clip.id }
+    private var isDragging: Bool { dragStartClip != nil }
     private var width: CGFloat { max(clip.outputDuration * model.pixelsPerSecond, 14) }
     private var color: Color { Theme.clipColor(lane: clip.laneIndex) }
 
@@ -58,6 +60,9 @@ struct ClipView: View {
             }
         }
         .frame(width: width, height: TimelineView.laneHeight)
+        .offset(y: dragOffsetY)
+        .shadow(color: isDragging ? .black.opacity(0.5) : .clear, radius: 8, y: 3)
+        .zIndex(isDragging ? 10 : 0)
         .contentShape(Rectangle())
         .onTapGesture {
             model.selectedClipID = isSelected ? nil : clip.id
@@ -116,10 +121,11 @@ struct ClipView: View {
             .foregroundStyle(.white)
     }
 
-    // MARK: - Move (horizontal = time, vertical = lane)
+    // MARK: - Move (horizontal = time; vertical stays VISUAL until release —
+    // committing the lane mid-drag re-parents the view and kills the gesture)
 
     private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 6)
+        DragGesture(minimumDistance: 4)
             .onChanged { value in
                 if dragStartClip == nil {
                     dragStartClip = clip
@@ -129,12 +135,22 @@ struct ClipView: View {
                 var moved = original
                 let proposedStart = original.startTime + value.translation.width / model.pixelsPerSecond
                 moved.startTime = model.snappedTime(proposedStart, for: original)
+                model.previewClip(moved)
+                dragOffsetY = value.translation.height
+            }
+            .onEnded { value in
+                defer {
+                    dragStartClip = nil
+                    dragOffsetY = 0
+                }
+                guard let original = dragStartClip,
+                      var moved = model.project.clip(withID: original.id) else {
+                    model.endGesture()
+                    return
+                }
                 let laneDelta = Int((value.translation.height / (TimelineView.laneHeight + TimelineView.laneGap)).rounded())
                 moved.laneIndex = min(max(original.laneIndex + laneDelta, 0), model.project.lanes.count)
                 model.previewClip(moved)
-            }
-            .onEnded { _ in
-                dragStartClip = nil
                 model.endGesture()
             }
     }
@@ -152,12 +168,12 @@ struct ClipView: View {
     }
 
     private func handle(system: String) -> some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.white.opacity(0.9))
-            .frame(width: 14, height: 40)
-            .overlay(Image(systemName: system).font(.caption2).foregroundStyle(.black))
+        RoundedRectangle(cornerRadius: 5)
+            .fill(Color.white.opacity(0.92))
+            .frame(width: 18, height: 48)
+            .overlay(Image(systemName: system).font(.caption).foregroundStyle(.black))
             .frame(maxHeight: .infinity)
-            .contentShape(Rectangle().inset(by: -8))
+            .contentShape(Rectangle().inset(by: -14))
     }
 
     private func trimGesture(isLeft: Bool) -> some Gesture {

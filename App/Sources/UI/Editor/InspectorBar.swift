@@ -6,6 +6,7 @@ struct InspectorBar: View {
     @Bindable var model: EditorModel
     let onStems: () -> Void
     let onPitchTempo: () -> Void
+    let onVolume: () -> Void
 
     var body: some View {
         if let clip = model.selectedClip {
@@ -46,17 +47,24 @@ struct InspectorBar: View {
                         updateFades(clip: clip) { $0.fadeOut = newValue }
                     }
                     Spacer()
+                    Button(action: onVolume) {
+                        Label("ווליום", systemImage: "speaker.wave.2")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 7)
+                            .background(Theme.surfaceRaised, in: Capsule())
+                    }
                     Button(action: onStems) {
                         Label("כלים", systemImage: "slider.vertical.3")
                             .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
+                            .padding(.horizontal, 9)
                             .padding(.vertical, 7)
                             .background(Theme.surfaceRaised, in: Capsule())
                     }
                     Button(action: onPitchTempo) {
-                        Label("קצב וסולם", systemImage: "dial.medium")
+                        Label("קצב", systemImage: "dial.medium")
                             .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
+                            .padding(.horizontal, 9)
                             .padding(.vertical, 7)
                             .background(Theme.surfaceRaised, in: Capsule())
                     }

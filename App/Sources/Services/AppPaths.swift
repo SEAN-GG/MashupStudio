@@ -17,6 +17,14 @@ enum AppPaths {
         ensure(documents.appendingPathComponent("Exports", isDirectory: true))
     }
 
+    static var modelsDir: URL {
+        ensure(documents.appendingPathComponent("Models", isDirectory: true))
+    }
+
+    static var demucsModelFile: URL {
+        modelsDir.appendingPathComponent("htdemucs_6s.bin")
+    }
+
     static func projectFile(_ id: UUID) -> URL {
         projectsDir.appendingPathComponent("\(id.uuidString).json")
     }

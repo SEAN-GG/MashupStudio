@@ -18,8 +18,15 @@ import Observation
 @MainActor
 final class PlaybackEngine {
     private final class ClipChain {
+        struct Source {
+            let player: AVAudioPlayerNode
+            let subMixer: AVAudioMixerNode   // per-source volume (stem fader × automation)
+            let effectNodes: [AVAudioNode]
+            let stem: StemKind?              // nil = whole-song source (no real stems)
+        }
+
         let clipID: UUID
-        var players: [(player: AVAudioPlayerNode, stem: StemKind?)] = []
+        var sources: [Source] = []
         var stemMixer = AVAudioMixerNode()
         var eq: AVAudioUnitEQ?
         var timePitch = AVAudioUnitTimePitch()
@@ -33,7 +40,12 @@ final class PlaybackEngine {
         }
 
         var allNodes: [AVAudioNode] {
-            var nodes: [AVAudioNode] = players.map { $0.player }
+            var nodes: [AVAudioNode] = []
+            for source in sources {
+                nodes.append(source.player)
+                nodes.append(source.subMixer)
+                nodes.append(contentsOf: source.effectNodes)
+            }
             nodes.append(stemMixer)
             if let eq { nodes.append(eq) }
             nodes.append(timePitch)
@@ -162,8 +174,8 @@ final class PlaybackEngine {
         if let exception = MSCatchException({ [self] in
             for chain in chains.values {
                 let when = AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: anchorMediaTime + chain.startOffset))
-                for (player, _) in chain.players {
-                    player.play(at: when)
+                for source in chain.sources {
+                    source.player.play(at: when)
                 }
             }
         }) {
@@ -181,8 +193,8 @@ final class PlaybackEngine {
         driver?.stop()
         _ = MSCatchException { [self] in
             for chain in chains.values {
-                for (player, _) in chain.players {
-                    player.stop()
+                for source in chain.sources {
+                    source.player.stop()
                 }
             }
             engine.stop()
@@ -238,7 +250,7 @@ final class PlaybackEngine {
 
         let chain = ClipChain(clipID: clip.id)
         chain.startOffset = max(clip.startTime - playheadAtStart, 0)
-        let useRealStems = asset.stems.isReady && !clip.stemGains.isNeutral
+        let useRealStems = asset.stems.isReady && clip.hasStemWork
 
         var sources: [(URL, StemKind?)] = []
         if useRealStems {
@@ -260,8 +272,8 @@ final class PlaybackEngine {
         }
         guard !files.isEmpty else { return nil }
 
-        // One explicit format for the whole chain (players feed the stem mixer
-        // in their own file format; the mixer converts).
+        // One explicit format for the whole chain (players feed their sub-mixer
+        // in their own file format; mixers convert).
         let chainRate = files[0].0.processingFormat.sampleRate
         guard let chainFormat = AVAudioFormat(standardFormatWithSampleRate: chainRate > 0 ? chainRate : 44100,
                                               channels: 2) else { return nil }
@@ -270,10 +282,9 @@ final class PlaybackEngine {
         engine.attach(chain.timePitch)
         engine.attach(chain.clipMixer)
 
-        if !useRealStems && !clip.stemGains.isNeutral {
+        if !useRealStems && clip.hasStemWork {
             let eq = AVAudioUnitEQ(numberOfBands: StemEQMapper.bandCount)
             StemEQMapper.configure(eq: eq)
-            StemEQMapper.apply(gains: clip.stemGains, to: eq)
             chain.eq = eq
             engine.attach(eq)
             engine.connect(chain.stemMixer, to: eq, format: chainFormat)
@@ -286,9 +297,23 @@ final class PlaybackEngine {
 
         for (file, stem) in files {
             let player = AVAudioPlayerNode()
+            let subMixer = AVAudioMixerNode()
             engine.attach(player)
-            engine.connect(player, to: chain.stemMixer, format: file.processingFormat)
-            chain.players.append((player, stem))
+            engine.attach(subMixer)
+            engine.connect(player, to: subMixer, format: file.processingFormat)
+
+            // Effects: per stem when separated; the union of all stem effects
+            // applies to the single whole-song source before separation.
+            let effectSettings = stem.map { clip.effects(for: $0) } ?? clip.allEffects
+            let effectNodes = EffectNodes.install(engine: engine,
+                                                  settings: effectSettings,
+                                                  from: subMixer,
+                                                  to: chain.stemMixer,
+                                                  format: chainFormat)
+            chain.sources.append(ClipChain.Source(player: player,
+                                                  subMixer: subMixer,
+                                                  effectNodes: effectNodes,
+                                                  stem: stem))
 
             let sr = file.processingFormat.sampleRate
             let startFrame = AVAudioFramePosition((clip.sourceStart + sourceOffset) * sr)
@@ -305,24 +330,25 @@ final class PlaybackEngine {
         chain.timePitch.rate = Float(clip.rate(at: t0))
         chain.timePitch.pitch = Float(clip.pitchCents(at: t0))
         chain.clipMixer.outputVolume = Float(clip.combinedGain(at: t0))
-        applyStemGains(clip: clip, chain: chain)
+        applyStemGains(clip: clip, chain: chain, at: t0)
         return chain
     }
 
-    private func applyStemGains(clip: Clip, chain: ClipChain) {
-        for (player, stem) in chain.players {
-            if let stem {
-                player.volume = Float(min(max(clip.stemGains[stem], 0), 2))
+    private func applyStemGains(clip: Clip, chain: ClipChain, at t: Double) {
+        for source in chain.sources {
+            if let stem = source.stem {
+                source.subMixer.outputVolume = Float(clip.stemGain(stem, at: t))
             } else {
-                player.volume = 1
+                source.subMixer.outputVolume = 1
             }
         }
         if let eq = chain.eq {
-            StemEQMapper.apply(gains: clip.stemGains, to: eq)
+            StemEQMapper.apply(gains: { kind in clip.stemGain(kind, at: t) }, to: eq)
         }
     }
 
     private func applyLaneLevels(project: MixProject) {
+        engine.mainMixerNode.outputVolume = Float(project.effectiveMasterVolume)
         var anySolo = false
         for lane in project.lanes where lane.isSoloed { anySolo = true }
         for (index, mixer) in laneMixers.enumerated() {
@@ -362,10 +388,10 @@ final class PlaybackEngine {
                 chain.timePitch.rate = Float(clip.rate(at: t))
                 chain.timePitch.pitch = Float(clip.pitchCents(at: t))
                 chain.clipMixer.outputVolume = Float(clip.combinedGain(at: t))
-                applyStemGains(clip: clip, chain: chain)
+                applyStemGains(clip: clip, chain: chain, at: t)
             } else if t > clip.outputDuration + 0.3 && !chain.finished {
                 chain.finished = true
-                for (player, _) in chain.players { player.stop() }
+                for source in chain.sources { source.player.stop() }
             }
         }
     }

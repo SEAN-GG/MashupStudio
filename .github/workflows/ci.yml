@@ -27,6 +27,9 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Fetch demucs.cpp (AI stem separation)
+        run: bash scripts/build_demucs.sh
+
       - name: Generate Xcode project
         run: xcodegen generate
 

@@ -19,6 +19,13 @@ struct MixProject: Codable, Identifiable, Hashable {
     var lanes: [Lane] = [Lane(), Lane()]
     var clips: [Clip] = []
     var isDraft: Bool = true
+    /// Optional so old saves still decode; use `effectiveMasterVolume`.
+    var masterVolume: Double? = nil
+
+    var effectiveMasterVolume: Double {
+        get { min(max(masterVolume ?? 1.0, 0), 2) }
+        set { masterVolume = newValue }
+    }
 
     var duration: Double {
         clips.map(\.endTime).max() ?? 0

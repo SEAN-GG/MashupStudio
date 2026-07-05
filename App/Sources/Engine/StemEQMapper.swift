@@ -2,23 +2,32 @@ import Foundation
 import AVFoundation
 
 /// Approximate "stem" control for clips whose real AI stems aren't ready yet:
-/// maps stem faders onto EQ bands. Clearly labeled as approximate in the UI.
+/// maps stem faders onto EQ bands. Clearly labeled as approximate in the UI —
+/// real separation replaces this entirely.
 enum StemEQMapper {
-    static let bandCount = 4
+    static let bandCount = 6
+
+    private static let bandOrder: [StemKind] = [.bass, .other, .vocals, .guitar, .piano, .drums]
 
     static func configure(eq: AVAudioUnitEQ) {
         guard eq.bands.count >= bandCount else { return }
         let bands = eq.bands
         bands[0].filterType = .lowShelf       // bass
         bands[0].frequency = 130
-        bands[1].filterType = .parametric     // vocals / mids
-        bands[1].frequency = 1400
-        bands[1].bandwidth = 1.2
-        bands[2].filterType = .parametric     // body / other instruments
-        bands[2].frequency = 420
-        bands[2].bandwidth = 1.1
-        bands[3].filterType = .highShelf      // drums brightness (hats, snare air)
-        bands[3].frequency = 7500
+        bands[1].filterType = .parametric     // other / body
+        bands[1].frequency = 420
+        bands[1].bandwidth = 1.1
+        bands[2].filterType = .parametric     // vocals / presence
+        bands[2].frequency = 1400
+        bands[2].bandwidth = 1.2
+        bands[3].filterType = .parametric     // guitar
+        bands[3].frequency = 2600
+        bands[3].bandwidth = 1.0
+        bands[4].filterType = .parametric     // piano / keys
+        bands[4].frequency = 800
+        bands[4].bandwidth = 1.0
+        bands[5].filterType = .highShelf      // drums brightness (hats, snare air)
+        bands[5].frequency = 7500
         for band in bands.prefix(bandCount) {
             band.bypass = false
             band.gain = 0
@@ -26,12 +35,12 @@ enum StemEQMapper {
         eq.globalGain = 0
     }
 
-    static func apply(gains: StemGains, to eq: AVAudioUnitEQ) {
+    /// Applies time-varying stem gains (fader × automation) onto the EQ bands.
+    static func apply(gains: (StemKind) -> Double, to eq: AVAudioUnitEQ) {
         guard eq.bands.count >= bandCount else { return }
-        eq.bands[0].gain = dB(gains.bass)
-        eq.bands[1].gain = dB(gains.vocals)
-        eq.bands[2].gain = dB(gains.other)
-        eq.bands[3].gain = dB(gains.drums)
+        for (index, kind) in bandOrder.enumerated() {
+            eq.bands[index].gain = dB(gains(kind))
+        }
     }
 
     private static func dB(_ linear: Double) -> Float {

@@ -43,6 +43,9 @@ jobs:
         if: ${{ inputs.enable_mp3 }}
         run: bash scripts/build_lame.sh
 
+      - name: Fetch demucs.cpp (AI stem separation)
+        run: bash scripts/build_demucs.sh
+
       - name: Generate Xcode project
         run: xcodegen generate
 

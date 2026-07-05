@@ -4,7 +4,7 @@ xcuserdata/
 !project.yml
 build/
 DerivedData/
-ThirdParty/downloads/
+ThirdParty/
 *.p8
 *.ipa
 *.xcarchive
