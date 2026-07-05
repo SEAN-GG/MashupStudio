@@ -35,6 +35,14 @@ struct SettingsSheet: View {
                         get: { settings.followPlayhead },
                         set: { settings.setFollowPlayhead($0) }
                     ))
+                    Toggle("הצגת ביטים על הקליפים", isOn: Binding(
+                        get: { settings.showBeats },
+                        set: { settings.setShowBeats($0) }
+                    ))
+                    Toggle("חלון קצב (Rhythm)", isOn: Binding(
+                        get: { settings.showRhythm },
+                        set: { settings.setShowRhythm($0) }
+                    ))
                     HStack {
                         Text("קרוספייד ברירת מחדל")
                         Slider(value: Binding(

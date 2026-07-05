@@ -29,6 +29,9 @@ struct EditorView: View {
                              onExport: { model.stopPlayback(); showExport = true },
                              onTransition: { showTransition = true },
                              onSettings: { showSettings = true })
+                if AppSettings.shared.showRhythm {
+                    RhythmWindow(model: model)
+                }
                 TimelineView(model: model)
                 if model.selectedClip != nil {
                     InspectorBar(model: model,

@@ -36,6 +36,9 @@ struct ClipView: View {
                 .frame(height: TimelineView.laneHeight - 26)
                 .offset(y: 20)
 
+            BeatTicks(model: model, clip: clip)
+                .allowsHitTesting(false)
+
             FadeOverlay(clip: clip, pps: model.pixelsPerSecond)
                 .foregroundStyle(Color.black.opacity(0.35))
 
@@ -259,6 +262,44 @@ private struct WaveformShape: View {
             context.stroke(path, with: .style(.foreground), lineWidth: 1.2)
         }
         .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Beat ticks
+
+/// Vertical ticks marking every detected beat of the song, mapped through the
+/// clip's trim and tempo automation so they sit exactly where each beat plays.
+private struct BeatTicks: View {
+    let model: EditorModel
+    let clip: Clip
+
+    var body: some View {
+        let pps = model.pixelsPerSecond
+        let showBeats = AppSettings.shared.showBeats
+        let asset = AssetLibrary.shared.asset(clip.assetID)
+        Canvas { context, size in
+            guard showBeats, let asset, let grid = asset.beatGrid, !grid.isEmpty else { return }
+            // Skip when zoomed out so far the ticks would smear together.
+            if let bpm = asset.bpm, bpm > 0, pps * 60 / bpm < 5 { return }
+
+            var strong = Path()
+            var weak = Path()
+            for (index, beat) in grid.enumerated() {
+                let sourceOffset = beat - clip.sourceStart
+                guard sourceOffset >= 0, sourceOffset <= clip.sourceDuration else { continue }
+                let x = clip.outputTime(forSourceOffset: sourceOffset) * pps
+                guard x >= 0, x <= size.width else { continue }
+                if index % 4 == 0 {
+                    strong.move(to: CGPoint(x: x, y: 0))
+                    strong.addLine(to: CGPoint(x: x, y: 14))
+                } else {
+                    weak.move(to: CGPoint(x: x, y: 0))
+                    weak.addLine(to: CGPoint(x: x, y: 8))
+                }
+            }
+            context.stroke(strong, with: .color(.white.opacity(0.75)), lineWidth: 1.4)
+            context.stroke(weak, with: .color(.white.opacity(0.38)), lineWidth: 1)
+        }
     }
 }
 

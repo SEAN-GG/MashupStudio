@@ -13,6 +13,8 @@ final class AppSettings {
     private(set) var snapToBeats: Bool
     private(set) var followPlayhead: Bool
     private(set) var defaultCrossfade: Double
+    private(set) var showBeats: Bool
+    private(set) var showRhythm: Bool
 
     private init() {
         let defaults = UserDefaults.standard
@@ -21,6 +23,18 @@ final class AppSettings {
         snapToBeats = defaults.object(forKey: "snapToBeats") as? Bool ?? true
         followPlayhead = defaults.object(forKey: "followPlayhead") as? Bool ?? true
         defaultCrossfade = defaults.object(forKey: "defaultCrossfade") as? Double ?? 8.0
+        showBeats = defaults.object(forKey: "showBeats") as? Bool ?? true
+        showRhythm = defaults.object(forKey: "showRhythm") as? Bool ?? true
+    }
+
+    func setShowBeats(_ value: Bool) {
+        showBeats = value
+        UserDefaults.standard.set(value, forKey: "showBeats")
+    }
+
+    func setShowRhythm(_ value: Bool) {
+        showRhythm = value
+        UserDefaults.standard.set(value, forKey: "showRhythm")
     }
 
     func setKeyNotation(_ value: KeyNotationStyle) {

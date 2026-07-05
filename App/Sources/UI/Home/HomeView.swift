@@ -19,26 +19,11 @@ struct HomeView: View {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 14) {
                             ForEach(store.summaries) { summary in
-                                ProjectCard(summary: summary)
-                                    .onTapGesture { open(summary) }
-                                    .contextMenu {
-                                        Button {
-                                            renameTarget = summary
-                                            renameText = summary.name
-                                        } label: {
-                                            Label("שינוי שם", systemImage: "pencil")
-                                        }
-                                        Button {
-                                            store.duplicate(summary.id)
-                                        } label: {
-                                            Label("שכפול", systemImage: "plus.square.on.square")
-                                        }
-                                        Button(role: .destructive) {
-                                            store.delete(summary.id)
-                                        } label: {
-                                            Label("מחיקה", systemImage: "trash")
-                                        }
-                                    }
+                                ProjectCard(summary: summary) {
+                                    cardMenu(summary)
+                                }
+                                .onTapGesture { open(summary) }
+                                .contextMenu { cardMenu(summary) }
                             }
                         }
                         .padding(16)
@@ -119,14 +104,43 @@ struct HomeView: View {
             openedProject = project
         }
     }
+
+    @ViewBuilder
+    private func cardMenu(_ summary: ProjectSummary) -> some View {
+        Button {
+            renameTarget = summary
+            renameText = summary.name
+        } label: {
+            Label("שינוי שם", systemImage: "pencil")
+        }
+        Button {
+            store.duplicate(summary.id)
+        } label: {
+            Label("שכפול הפרויקט", systemImage: "plus.square.on.square")
+        }
+        Button(role: .destructive) {
+            store.delete(summary.id)
+        } label: {
+            Label("מחיקה", systemImage: "trash")
+        }
+    }
 }
 
-private struct ProjectCard: View {
+private struct ProjectCard<MenuContent: View>: View {
     let summary: ProjectSummary
+    @ViewBuilder let menuContent: () -> MenuContent
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 8) {
             HStack {
+                Menu {
+                    menuContent()
+                } label: {
+                    Image(systemName: "ellipsis.circle.fill")
+                        .font(.body)
+                        .foregroundStyle(Theme.textSecondary)
+                        .contentShape(Rectangle().inset(by: -8))
+                }
                 if summary.isDraft {
                     Text("טיוטה")
                         .font(.caption2.bold())
