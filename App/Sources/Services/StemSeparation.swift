@@ -208,7 +208,7 @@ enum DemucsSeparator {
 
             let lChunk = Array(left[start..<end])
             let rChunk = Array(right[start..<end])
-            var separated: [NSData]?
+            var separated: [Data]?
             lChunk.withUnsafeBufferPointer { lp in
                 rChunk.withUnsafeBufferPointer { rp in
                     separated = DemucsBridge.separate(withModelPath: modelPath,
@@ -230,12 +230,24 @@ enum DemucsSeparator {
 
             for (sourceIndex, kind) in StemKind.demucsOrder.enumerated() {
                 let blob = separated[sourceIndex]
-                let floats = blob.bytes.assumingMemoryBound(to: Float.self)
                 var lOut = [Float](repeating: 0, count: max(writeEnd, 0))
                 var rOut = [Float](repeating: 0, count: max(writeEnd, 0))
-                for i in 0..<max(writeEnd, 0) {
-                    lOut[i] = floats[i]
-                    rOut[i] = floats[len + i]
+                var newTail: (l: [Float], r: [Float])?
+                blob.withUnsafeBytes { raw in
+                    let floats = raw.bindMemory(to: Float.self)
+                    for i in 0..<max(writeEnd, 0) {
+                        lOut[i] = floats[i]
+                        rOut[i] = floats[len + i]
+                    }
+                    if holdFrames > 0 {
+                        var tl = [Float](repeating: 0, count: holdFrames)
+                        var tr = [Float](repeating: 0, count: holdFrames)
+                        for i in 0..<holdFrames {
+                            tl[i] = floats[writeEnd + i]
+                            tr[i] = floats[len + writeEnd + i]
+                        }
+                        newTail = (tl, tr)
+                    }
                 }
                 // Crossfade the first `overlap` frames with the held tail.
                 if position > 0, let tail = tails[kind] {
@@ -246,16 +258,7 @@ enum DemucsSeparator {
                         rOut[i] = tail.r[i] * (1 - w) + rOut[i] * w
                     }
                 }
-                // Hold this chunk's tail for the next blend.
-                if holdFrames > 0 {
-                    var tl = [Float](repeating: 0, count: holdFrames)
-                    var tr = [Float](repeating: 0, count: holdFrames)
-                    for i in 0..<holdFrames {
-                        tl[i] = floats[writeEnd + i]
-                        tr[i] = floats[len + writeEnd + i]
-                    }
-                    tails[kind] = (tl, tr)
-                }
+                if let newTail { tails[kind] = newTail }
                 try append(lOut, rOut, to: writers[kind], format: format)
             }
 

@@ -58,7 +58,7 @@ struct VolumeSheet: View {
     @ViewBuilder
     private var gradualSection: some View {
         if let clip {
-            Section("שינוי הדרגתי בווליום") {
+            Section {
                 HStack {
                     Text("יעד")
                     Slider(value: $gradualTarget, in: 0...150, step: 5)
@@ -81,6 +81,8 @@ struct VolumeSheet: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+            } header: {
+                Text("שינוי הדרגתי בווליום")
             } footer: {
                 Text("לדוגמה: מ-100% ל-20% לאורך 8 שניות — בדיוק כמו פיידר בהופעה חיה.")
             }
@@ -116,7 +118,7 @@ struct VolumeSheet: View {
     }
 
     private var masterSection: some View {
-        Section("ווליום כללי (כל הפרויקט)") {
+        Section {
             HStack {
                 Image(systemName: "speaker.wave.3.fill")
                     .foregroundStyle(Theme.accent)
@@ -130,6 +132,8 @@ struct VolumeSheet: View {
                     .font(.caption.monospacedDigit())
                     .frame(width: 48)
             }
+        } header: {
+            Text("ווליום כללי (כל הפרויקט)")
         } footer: {
             Text("משפיע על הנגינה וגם על הייצוא.")
         }
