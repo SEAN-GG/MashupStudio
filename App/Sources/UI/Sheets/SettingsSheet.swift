@@ -43,6 +43,10 @@ struct SettingsSheet: View {
                         get: { settings.showRhythm },
                         set: { settings.setShowRhythm($0) }
                     ))
+                    Toggle("מילות השיר על הקליפים", isOn: Binding(
+                        get: { settings.showLyrics },
+                        set: { settings.setShowLyrics($0) }
+                    ))
                     HStack {
                         Text("קרוספייד ברירת מחדל")
                         Slider(value: Binding(

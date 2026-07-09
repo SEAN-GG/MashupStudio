@@ -20,8 +20,20 @@ struct AudioAsset: Codable, Identifiable, Hashable {
     var analysisDone: Bool = false
     var stems: StemsState = .none
 
+    // Lyrics (optional so assets saved by older builds still decode)
+    var lyrics: [LyricWord]? = nil
+    var lyricsLanguage: String? = nil   // BCP-47 identifier used for transcription
+
     var displayBPM: String {
         guard let bpm else { return "—" }
         return String(format: "%.1f", bpm)
     }
+}
+
+/// One transcribed word of the song, timed in source seconds.
+struct LyricWord: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var time: Double        // seconds from the start of the file
+    var duration: Double
+    var text: String
 }

@@ -15,6 +15,7 @@ final class AppSettings {
     private(set) var defaultCrossfade: Double
     private(set) var showBeats: Bool
     private(set) var showRhythm: Bool
+    private(set) var showLyrics: Bool
 
     private init() {
         let defaults = UserDefaults.standard
@@ -25,6 +26,12 @@ final class AppSettings {
         defaultCrossfade = defaults.object(forKey: "defaultCrossfade") as? Double ?? 8.0
         showBeats = defaults.object(forKey: "showBeats") as? Bool ?? true
         showRhythm = defaults.object(forKey: "showRhythm") as? Bool ?? true
+        showLyrics = defaults.object(forKey: "showLyrics") as? Bool ?? true
+    }
+
+    func setShowLyrics(_ value: Bool) {
+        showLyrics = value
+        UserDefaults.standard.set(value, forKey: "showLyrics")
     }
 
     func setShowBeats(_ value: Bool) {

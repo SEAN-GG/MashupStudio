@@ -14,6 +14,7 @@ struct ExportSheet: View {
     @State private var fromText = "00:00"
     @State private var toText = "00:00"
     @State private var format: ExportFormat = ExportFormat.available.first ?? .m4a
+    @State private var karaokeVideo = false
     @State private var fileName = ""
     @State private var isExporting = false
     @State private var progress: Double = 0
@@ -88,16 +89,26 @@ struct ExportSheet: View {
             }
         }
         Section("פורמט") {
-            Picker("פורמט", selection: $format) {
-                ForEach(ExportFormat.available) { f in
-                    Text(f.label).tag(f)
+            if !karaokeVideo {
+                Picker("פורמט", selection: $format) {
+                    ForEach(ExportFormat.available) { f in
+                        Text(f.label).tag(f)
+                    }
+                }
+                .pickerStyle(.segmented)
+                if !MP3Encoder.isAvailable {
+                    Text("ייצוא MP3 יופעל בגרסה הקרובה; בינתיים M4A נשמע זהה ונתמך בכל מקום.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
                 }
             }
-            .pickerStyle(.segmented)
-            if !MP3Encoder.isAvailable {
-                Text("ייצוא MP3 יופעל בגרסה הקרובה; בינתיים M4A נשמע זהה ונתמך בכל מקום.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
+            if projectHasLyrics {
+                Toggle("וידאו קריוקי (MP4) 🎤", isOn: $karaokeVideo)
+                if karaokeVideo {
+                    Text("הווידאו יציג את מילות השיר על המסך, עם הדגשת המילה הנוכחית בזמן שהיא מושרת.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                }
             }
         }
         Section("שם הקובץ") {
@@ -162,6 +173,12 @@ struct ExportSheet: View {
 
     // MARK: - Export
 
+    private var projectHasLyrics: Bool {
+        model.project.clips.contains {
+            AssetLibrary.shared.asset($0.assetID)?.lyrics?.isEmpty == false
+        }
+    }
+
     private func startExport() {
         errorMessage = nil
         let project = model.project
@@ -188,16 +205,17 @@ struct ExportSheet: View {
             return
         }
 
+        let fileExtension = karaokeVideo ? "mp4" : format.fileExtension
         let cleanName = fileName.trimmingCharacters(in: .whitespaces).isEmpty
             ? project.name : fileName.trimmingCharacters(in: .whitespaces)
         var destination = AppPaths.exportsDir
             .appendingPathComponent(cleanName)
-            .appendingPathExtension(format.fileExtension)
+            .appendingPathExtension(fileExtension)
         var counter = 2
         while FileManager.default.fileExists(atPath: destination.path) {
             destination = AppPaths.exportsDir
                 .appendingPathComponent("\(cleanName) \(counter)")
-                .appendingPathExtension(format.fileExtension)
+                .appendingPathExtension(fileExtension)
             counter += 1
         }
 
@@ -211,6 +229,60 @@ struct ExportSheet: View {
         let chosenFormat = format
         let rangeStart = start
         let rangeEnd = end
+
+        if karaokeVideo {
+            let words = KaraokeExporter.timelineWords(project: project,
+                                                      rangeStart: rangeStart,
+                                                      rangeEnd: rangeEnd)
+            guard !words.isEmpty else {
+                isExporting = false
+                errorMessage = KaraokeError.noLyrics.errorDescription
+                return
+            }
+            let title = cleanName
+            Task.detached(priority: .userInitiated) {
+                let tempAudio = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("karaoke-\(UUID().uuidString).m4a")
+                defer { try? FileManager.default.removeItem(at: tempAudio) }
+                do {
+                    // Stage 1: mix the audio; stage 2: draw the video frames.
+                    try OfflineRenderer.render(project: project,
+                                               assets: assets,
+                                               rangeStart: rangeStart,
+                                               rangeEnd: rangeEnd,
+                                               format: .m4a,
+                                               to: tempAudio,
+                                               isCancelled: { flag.cancelled }) { p in
+                        Task { @MainActor in progress = p * 0.4 }
+                    }
+                    try await KaraokeExporter.render(words: words,
+                                                     audioURL: tempAudio,
+                                                     duration: rangeEnd - rangeStart,
+                                                     title: title,
+                                                     to: destination,
+                                                     isCancelled: { flag.cancelled }) { p in
+                        Task { @MainActor in progress = 0.4 + p * 0.6 }
+                    }
+                    await MainActor.run {
+                        isExporting = false
+                        resultURL = destination
+                    }
+                } catch {
+                    await MainActor.run {
+                        isExporting = false
+                        if flag.cancelled {
+                            dismiss()
+                        } else {
+                            errorMessage = (error as? KaraokeError)?.errorDescription
+                                ?? (error as? RenderError)?.errorDescription
+                                ?? "הייצוא נכשל"
+                        }
+                    }
+                }
+            }
+            return
+        }
+
         Task.detached(priority: .userInitiated) {
             do {
                 try OfflineRenderer.render(project: project,

@@ -1,5 +1,11 @@
 import Foundation
+import AVFoundation
 import Observation
+
+enum MediaImportError: Error {
+    case noAudioTrack
+    case extractionFailed
+}
 
 /// Shared library of imported audio files and their analysis state.
 @Observable
@@ -40,6 +46,55 @@ final class AssetLibrary {
         assets[assetID] = asset
         // Progress updates are frequent; only persist meaningful transitions.
         if !state.isProcessing { persist() }
+    }
+
+    private static let videoExtensions: Set<String> = ["mp4", "mov", "m4v", "3gp", "mpg", "mpeg"]
+
+    /// Imports audio files directly; for videos, extracts the audio track first.
+    func importMedia(from sourceURL: URL) async throws -> AudioAsset {
+        guard Self.videoExtensions.contains(sourceURL.pathExtension.lowercased()) else {
+            return try importFile(from: sourceURL)
+        }
+
+        let accessing = sourceURL.startAccessingSecurityScopedResource()
+        defer { if accessing { sourceURL.stopAccessingSecurityScopedResource() } }
+
+        let id = UUID()
+        let fileName = "audio.m4a"
+        let folder = AppPaths.assetFolder(id)
+        let destination = folder.appendingPathComponent(fileName)
+
+        let avAsset = AVURLAsset(url: sourceURL)
+        guard let audioTracks = try? await avAsset.loadTracks(withMediaType: .audio),
+              !audioTracks.isEmpty else {
+            throw MediaImportError.noAudioTrack
+        }
+        guard let export = AVAssetExportSession(asset: avAsset, presetName: AVAssetExportPresetAppleM4A) else {
+            throw MediaImportError.extractionFailed
+        }
+        export.outputURL = destination
+        export.outputFileType = .m4a
+        await export.export()
+        guard export.status == .completed else {
+            try? FileManager.default.removeItem(at: folder)
+            throw MediaImportError.extractionFailed
+        }
+
+        let info = try AudioFileLoader.info(url: destination)
+        var title = sourceURL.deletingPathExtension().lastPathComponent
+        if title.isEmpty { title = "שיר ללא שם" }
+
+        let asset = AudioAsset(id: id,
+                               title: title,
+                               fileName: fileName,
+                               duration: info.duration,
+                               sampleRate: info.sampleRate,
+                               channelCount: info.channels,
+                               importedAt: Date())
+        assets[id] = asset
+        persist()
+        AudioAnalyzer.analyzeInBackground(asset: asset)
+        return asset
     }
 
     /// Copies a picked file into the library and starts analysis in the background.

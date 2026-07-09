@@ -19,7 +19,6 @@ struct ClipView: View {
 
     @State private var dragStartClip: Clip?
     @State private var trimStartClip: Clip?
-    @State private var dragOffsetY: CGFloat = 0
 
     private var isSelected: Bool { model.selectedClipID == clip.id }
     private var isDragging: Bool { dragStartClip != nil }
@@ -37,6 +36,9 @@ struct ClipView: View {
                 .offset(y: 20)
 
             BeatTicks(model: model, clip: clip)
+                .allowsHitTesting(false)
+
+            LyricLabels(model: model, clip: clip)
                 .allowsHitTesting(false)
 
             FadeOverlay(clip: clip, pps: model.pixelsPerSecond)
@@ -63,7 +65,6 @@ struct ClipView: View {
             }
         }
         .frame(width: width, height: TimelineView.laneHeight)
-        .offset(y: dragOffsetY)
         .shadow(color: isDragging ? .black.opacity(0.5) : .clear, radius: 8, y: 3)
         .zIndex(isDragging ? 10 : 0)
         .contentShape(Rectangle())
@@ -82,6 +83,22 @@ struct ClipView: View {
                 model.duplicateClip(clip.id)
             } label: {
                 Label("שכפול", systemImage: "plus.square.on.square")
+            }
+            Button {
+                model.snapToPreviousClip(clip.id)
+            } label: {
+                Label("הצמדה לקליפ הקודם", systemImage: "arrow.left.to.line.compact")
+            }
+            Button {
+                model.moveClipLane(clip.id, delta: -1)
+            } label: {
+                Label("שורה למעלה", systemImage: "arrow.up.square")
+            }
+            .disabled(clip.laneIndex == 0)
+            Button {
+                model.moveClipLane(clip.id, delta: 1)
+            } label: {
+                Label("שורה למטה", systemImage: "arrow.down.square")
             }
             Button(role: .destructive) {
                 model.deleteClip(clip.id)
@@ -124,8 +141,8 @@ struct ClipView: View {
             .foregroundStyle(.white)
     }
 
-    // MARK: - Move (horizontal = time; vertical stays VISUAL until release —
-    // committing the lane mid-drag re-parents the view and kills the gesture)
+    // MARK: - Move (horizontal only — lane changes go through the dedicated
+    // buttons, so the clip can't wobble vertically while sliding in time)
 
     private var moveGesture: some Gesture {
         DragGesture(minimumDistance: 4)
@@ -139,21 +156,9 @@ struct ClipView: View {
                 let proposedStart = original.startTime + value.translation.width / model.pixelsPerSecond
                 moved.startTime = model.snappedTime(proposedStart, for: original)
                 model.previewClip(moved)
-                dragOffsetY = value.translation.height
             }
-            .onEnded { value in
-                defer {
-                    dragStartClip = nil
-                    dragOffsetY = 0
-                }
-                guard let original = dragStartClip,
-                      var moved = model.project.clip(withID: original.id) else {
-                    model.endGesture()
-                    return
-                }
-                let laneDelta = Int((value.translation.height / (TimelineView.laneHeight + TimelineView.laneGap)).rounded())
-                moved.laneIndex = min(max(original.laneIndex + laneDelta, 0), model.project.lanes.count)
-                model.previewClip(moved)
+            .onEnded { _ in
+                dragStartClip = nil
                 model.endGesture()
             }
     }
@@ -299,6 +304,40 @@ private struct BeatTicks: View {
             }
             context.stroke(strong, with: .color(.white.opacity(0.75)), lineWidth: 1.4)
             context.stroke(weak, with: .color(.white.opacity(0.38)), lineWidth: 1)
+        }
+    }
+}
+
+// MARK: - Lyric labels
+
+/// Transcribed words drawn along the bottom edge of the clip, each at the
+/// exact moment it is sung (mapped through trim and tempo automation).
+private struct LyricLabels: View {
+    let model: EditorModel
+    let clip: Clip
+
+    var body: some View {
+        let pps = model.pixelsPerSecond
+        let show = AppSettings.shared.showLyrics
+        let asset = AssetLibrary.shared.asset(clip.assetID)
+        Canvas { context, size in
+            guard show, let words = asset?.lyrics, !words.isEmpty else { return }
+            var lastMaxX: CGFloat = -.greatestFiniteMagnitude
+            for word in words {
+                let sourceOffset = word.time - clip.sourceStart
+                guard sourceOffset >= 0, sourceOffset <= clip.sourceDuration else { continue }
+                let x = clip.outputTime(forSourceOffset: sourceOffset) * pps
+                guard x >= 0, x <= size.width, x >= lastMaxX + 5 else { continue }
+                let resolved = context.resolve(
+                    Text(word.text)
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.85))
+                )
+                let textSize = resolved.measure(in: CGSize(width: 160, height: 12))
+                guard x + textSize.width <= size.width + 20 else { continue }
+                context.draw(resolved, at: CGPoint(x: x, y: size.height - 7), anchor: .leading)
+                lastMaxX = x + textSize.width
+            }
         }
     }
 }

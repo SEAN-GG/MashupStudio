@@ -44,4 +44,51 @@ final class ProjectModelTests: XCTestCase {
         XCTAssertEqual(fades.gain(at: 18, duration: 20), 0.5, accuracy: 1e-6)
         XCTAssertEqual(fades.gain(at: 20, duration: 20), 0, accuracy: 1e-6)
     }
+
+    func testTrimRightCanReExtendAfterShortening() {
+        var clip = Clip(assetID: UUID(), name: "x", laneIndex: 0,
+                        startTime: 0, sourceStart: 0, sourceDuration: 100)
+        clip.trimRight(toTimelineTime: 40, assetDuration: 100)
+        XCTAssertEqual(clip.sourceDuration, 40, accuracy: 0.01)
+        // Re-extend past the shortened length: trimmed material comes back.
+        clip.trimRight(toTimelineTime: 80, assetDuration: 100)
+        XCTAssertEqual(clip.sourceDuration, 80, accuracy: 0.01)
+        // But never past the end of the file.
+        clip.trimRight(toTimelineTime: 500, assetDuration: 100)
+        XCTAssertEqual(clip.sourceDuration, 100, accuracy: 0.01)
+    }
+
+    func testTrimRightReExtendRespectsRate() {
+        var clip = Clip(assetID: UUID(), name: "x", laneIndex: 0,
+                        startTime: 0, sourceStart: 10, sourceDuration: 60)
+        clip.rateCurve = AutomationCurve(defaultValue: 2.0)   // plays twice as fast
+        XCTAssertEqual(clip.outputDuration, 30, accuracy: 0.01)
+        clip.trimRight(toTimelineTime: 10, assetDuration: 100)
+        XCTAssertEqual(clip.sourceDuration, 20, accuracy: 0.01)
+        clip.trimRight(toTimelineTime: 40, assetDuration: 100)
+        // 40 output seconds at 2x would need 80 source seconds; only 90 remain
+        // after sourceStart=10, so it fits fully.
+        XCTAssertEqual(clip.sourceDuration, 80, accuracy: 0.01)
+    }
+
+    func testLyricWordsCodableOnAsset() throws {
+        var asset = AudioAsset(id: UUID(), title: "שיר", fileName: "audio.m4a",
+                               duration: 120, sampleRate: 44100, channelCount: 2,
+                               importedAt: Date())
+        asset.lyrics = [LyricWord(time: 1.5, duration: 0.4, text: "שלום"),
+                        LyricWord(time: 2.1, duration: 0.3, text: "עולם")]
+        asset.lyricsLanguage = "he-IL"
+        let data = try JSONEncoder().encode(asset)
+        let decoded = try JSONDecoder().decode(AudioAsset.self, from: data)
+        XCTAssertEqual(decoded.lyrics?.count, 2)
+        XCTAssertEqual(decoded.lyrics?.first?.text, "שלום")
+
+        // An asset JSON without the new fields still decodes.
+        var old = asset
+        old.lyrics = nil
+        old.lyricsLanguage = nil
+        let oldData = try JSONEncoder().encode(old)
+        let oldDecoded = try JSONDecoder().decode(AudioAsset.self, from: oldData)
+        XCTAssertNil(oldDecoded.lyrics)
+    }
 }

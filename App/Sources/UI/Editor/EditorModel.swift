@@ -24,6 +24,9 @@ final class EditorModel {
     var contentOffsetX: Double = 0
     var contentOffsetY: Double = 0
     var importError: String?
+    /// True while a clip drag/trim gesture is in flight — the timeline must
+    /// not pan, zoom or seek underneath it (that caused random view jumps).
+    var isClipGestureActive = false
 
     var selectedClip: Clip? {
         guard let selectedClipID else { return nil }
@@ -83,12 +86,14 @@ final class EditorModel {
     // MARK: - Import
 
     func importSongs(urls: [URL]) {
-        for url in urls {
-            do {
-                let asset = try AssetLibrary.shared.importFile(from: url)
-                addClip(for: asset)
-            } catch {
-                importError = "לא ניתן לייבא את \(url.lastPathComponent)"
+        Task {
+            for url in urls {
+                do {
+                    let asset = try await AssetLibrary.shared.importMedia(from: url)
+                    addClip(for: asset)
+                } catch {
+                    importError = "לא ניתן לייבא את \(url.lastPathComponent)"
+                }
             }
         }
     }
@@ -141,11 +146,35 @@ final class EditorModel {
         undoStack.append(project)
         if undoStack.count > 80 { undoStack.removeFirst() }
         redoStack.removeAll()
+        isClipGestureActive = true
     }
 
     func endGesture() {
+        isClipGestureActive = false
         project.normalizeLanes()
         engine.projectDidChange()
+    }
+
+    /// Moves a clip one lane up or down (drag is horizontal-only now).
+    func moveClipLane(_ id: UUID, delta: Int) {
+        guard var clip = project.clip(withID: id) else { return }
+        let target = clip.laneIndex + delta
+        guard target >= 0, target <= project.lanes.count else { return }
+        clip.laneIndex = target
+        mutate { $0.update(clip) }
+    }
+
+    /// "Glues" the clip right after the nearest clip that ends at or before its
+    /// start (any lane); with nothing before it, snaps to the timeline start.
+    func snapToPreviousClip(_ id: UUID) {
+        guard var clip = project.clip(withID: id) else { return }
+        let previousEnd = project.clips
+            .filter { $0.id != id && $0.endTime <= clip.startTime + 0.001 }
+            .map(\.endTime)
+            .max() ?? 0
+        guard abs(previousEnd - clip.startTime) > 0.0001 else { return }
+        clip.startTime = previousEnd
+        mutate { $0.update(clip) }
     }
 
     func deleteClip(_ id: UUID) {

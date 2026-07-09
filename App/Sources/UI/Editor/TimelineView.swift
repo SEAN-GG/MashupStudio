@@ -50,7 +50,8 @@ struct TimelineView: View {
                 model.selectedClipID = nil
             }
             .onChange(of: model.engine.playhead) { _, newValue in
-                guard model.engine.isPlaying, AppSettings.shared.followPlayhead else { return }
+                guard model.engine.isPlaying, AppSettings.shared.followPlayhead,
+                      !model.isClipGestureActive, panStartOffset == nil else { return }
                 let x = newValue * model.pixelsPerSecond - model.contentOffsetX
                 if x > timelineWidth * 0.72 || x < 0 {
                     model.contentOffsetX = max(0, newValue * model.pixelsPerSecond - timelineWidth * 0.3)
@@ -74,11 +75,15 @@ struct TimelineView: View {
     private var panGesture: some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
+                guard !model.isClipGestureActive else { return }
                 if panStartOffset == nil {
                     panStartOffset = CGPoint(x: model.contentOffsetX, y: model.contentOffsetY)
                 }
                 guard let start = panStartOffset else { return }
-                model.contentOffsetX = max(0, Double(start.x - value.translation.width))
+                // Never scroll far past the end of the project — a runaway
+                // fling used to leave the view stranded at a random spot.
+                let maxX = max(0, model.project.duration * model.pixelsPerSecond - 60)
+                model.contentOffsetX = min(max(0, Double(start.x - value.translation.width)), maxX)
                 let maxY = max(0, Double(model.project.lanes.count) * Double(Self.laneHeight + Self.laneGap) - 200)
                 model.contentOffsetY = min(max(0, Double(start.y - value.translation.height)), maxY)
             }
@@ -90,6 +95,7 @@ struct TimelineView: View {
     private var zoomGesture: some Gesture {
         MagnifyGesture()
             .onChanged { value in
+                guard !model.isClipGestureActive else { return }
                 if zoomStartPPS == nil { zoomStartPPS = model.pixelsPerSecond }
                 guard let startPPS = zoomStartPPS else { return }
                 let newPPS = min(max(startPPS * value.magnification, 2), 160)
@@ -145,6 +151,8 @@ private struct RulerView: View {
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
+                    // A stray touch during a clip drag must not teleport the playhead.
+                    guard !model.isClipGestureActive else { return }
                     // Scrubbing while playing would rebuild the audio graph on
                     // every frame — pause first, then move the playhead freely.
                     if model.engine.isPlaying { model.engine.pause() }

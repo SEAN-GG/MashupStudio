@@ -7,6 +7,7 @@ struct InspectorBar: View {
     let onStems: () -> Void
     let onPitchTempo: () -> Void
     let onVolume: () -> Void
+    let onLyrics: () -> Void
 
     var body: some View {
         if let clip = model.selectedClip {
@@ -47,33 +48,50 @@ struct InspectorBar: View {
                         updateFades(clip: clip) { $0.fadeOut = newValue }
                     }
                     Spacer()
-                    Button(action: onVolume) {
-                        Label("ווליום", systemImage: "speaker.wave.2")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 7)
-                            .background(Theme.surfaceRaised, in: Capsule())
-                    }
-                    Button(action: onStems) {
-                        Label("כלים", systemImage: "slider.vertical.3")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 7)
-                            .background(Theme.surfaceRaised, in: Capsule())
-                    }
-                    Button(action: onPitchTempo) {
-                        Label("קצב", systemImage: "dial.medium")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 7)
-                            .background(Theme.surfaceRaised, in: Capsule())
-                    }
+                    laneButton(system: "arrow.up.square", delta: -1, clip: clip)
+                    laneButton(system: "arrow.down.square", delta: 1, clip: clip)
+                }
+
+                // Action buttons on their own row so the Hebrew labels never
+                // get squeezed into wrapping letter-by-letter.
+                HStack(spacing: 8) {
+                    actionButton("ווליום", system: "speaker.wave.2", action: onVolume)
+                    actionButton("כלים", system: "slider.vertical.3", action: onStems)
+                    actionButton("קצב", system: "dial.medium", action: onPitchTempo)
+                    actionButton("מילים", system: "music.mic", action: onLyrics)
                 }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(Theme.surface)
         }
+    }
+
+    private func actionButton(_ title: String, system: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: system)
+                    .font(.caption2)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background(Theme.surfaceRaised, in: Capsule())
+        }
+    }
+
+    private func laneButton(system: String, delta: Int, clip: Clip) -> some View {
+        Button {
+            model.moveClipLane(clip.id, delta: delta)
+        } label: {
+            Image(systemName: system)
+                .font(.body)
+                .foregroundStyle(Theme.textPrimary)
+        }
+        .disabled(delta < 0 && clip.laneIndex == 0)
     }
 
     @ViewBuilder

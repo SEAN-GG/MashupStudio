@@ -157,11 +157,18 @@ struct Clip: Codable, Identifiable, Hashable {
         fades.fadeIn = min(fades.fadeIn, max(0, outputDuration - 0.1))
     }
 
-    /// Trims the clip's right edge to a new timeline end.
+    /// Trims (or re-extends) the clip's right edge to a new timeline end.
+    /// Growing past the current length recovers trimmed source material, up to
+    /// the end of the file — so a shortened clip can always be stretched back.
     mutating func trimRight(toTimelineTime newEnd: Double, assetDuration: Double) {
         let localT = newEnd - startTime
         let desired = min(max(localT, 0.1), maxOutputDuration(assetDuration: assetDuration))
-        sourceDuration = sourceOffset(atOutputTime: desired)
+        // Not sourceOffset(atOutputTime:) — that clamps to the current
+        // sourceDuration and would make extension impossible.
+        let consumed = rateCurve.isTrivial
+            ? min(max(rateCurve.defaultValue, Clip.minRate), Clip.maxRate) * desired
+            : rateCurve.integral(upTo: desired)
+        sourceDuration = min(consumed, max(assetDuration - sourceStart, 0.1))
         fades.fadeOut = min(fades.fadeOut, max(0, outputDuration - 0.1))
     }
 

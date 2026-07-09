@@ -4,6 +4,7 @@ struct TransportBar: View {
     @Bindable var model: EditorModel
     let onBack: () -> Void
     let onImport: () -> Void
+    let onImportGallery: () -> Void
     let onExport: () -> Void
     let onTransition: () -> Void
     let onSettings: () -> Void
@@ -20,7 +21,14 @@ struct TransportBar: View {
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 Spacer()
-                Button(action: onImport) {
+                Menu {
+                    Button(action: onImport) {
+                        Label("שיר או סרטון מהקבצים", systemImage: "folder")
+                    }
+                    Button(action: onImportGallery) {
+                        Label("סרטון מגלריית התמונות", systemImage: "photo.on.rectangle")
+                    }
+                } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.title3)
                 }
